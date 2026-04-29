@@ -1,0 +1,1 @@
+System.register([],function(e,t){"use strict";return{execute:function(){e("A","asset"),e("a",{CATEGORY_MASTER:"category_master",MAINTENANCE:"maintenance",FUEL_TELEMETRY:"fuel_telemetry",TAGGED_ASSET:"tagged_asset",BULK_INVENTORY:"bulk_inventory",ISSUANCE:"issuance",CALIBRATION:"calibration"}),e("b",{CREATE:"create",EDIT:"edit",DELETE:"delete"})}}});

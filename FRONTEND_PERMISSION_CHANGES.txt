@@ -1,0 +1,216 @@
+================================================================================
+ROLE PERMISSION KEY CHANGES — FRONTEND ACTION REQUIRED
+================================================================================
+
+Audience: Frontend / Role-management UI developers
+Backend version: post-asset-module restructure (April 2026)
+
+This document lists every permission-key change you must reflect in:
+  • The role-edit / role-create form (the matrix of checkboxes)
+  • Any client-side permission check (e.g. menu visibility, route guards)
+  • Anywhere the FE sends `permissions: {...}` payloads to /role/* endpoints
+
+Permission shape is unchanged:
+  {
+    permissions: {
+      <module>: {
+        <sub_module>: { read, create, edit, delete }   // nested module
+      }
+    }
+  }
+
+The DEV role auto-receives every valid permission on every server boot — no
+manual sync needed.
+
+================================================================================
+1. NEW TOP-LEVEL MODULE: `asset`
+================================================================================
+
+Previously, asset-related permissions lived under `settings.assets` (single
+sub-module). They are now their own top-level module with 9 sub-modules.
+
+REMOVED (do NOT include in new role payloads):
+  settings.assets                    ← gone
+
+ADDED (FE must render these in the role-edit matrix):
+  asset.category_master              — AssetCategoryMaster (settings master)
+  asset.machinery                    — MachineryAsset (heavy: GPS/fuel/HMR)
+  asset.machinery_logs               — MachineDailyLog (daily usage entries)
+  asset.maintenance                  — MaintenanceLog (service / breakdown)
+  asset.fuel_telemetry               — Live GPS / fuel sync from third-party
+  asset.tagged_asset                 — Tools, IT, Survey, Furniture, single SiteInfra
+  asset.bulk_inventory               — Formwork, Scaffolding, PPE, Fencing, Tarps
+  asset.issuance                     — Cross-cutting custody log (issue / return)
+  asset.calibration                  — Survey / Lab calibration certificates
+
+Each sub-module supports the standard 4 actions: read, create, edit, delete.
+
+ROUTE → PERMISSION MAPPING (for FE route guards / menu hiding):
+  /assetcategory/*                   → asset.category_master
+  /machineryasset/*                  → asset.machinery        (route currently has no auth — reserved)
+  /machinerylogs/*                   → asset.machinery_logs   (route currently has no auth — reserved)
+  /fueltelemetry/*                   → asset.fuel_telemetry   (verifyJWT only — reserved for future verifyPermission)
+  /taggedasset/*                     → asset.tagged_asset
+  /bulkinventory/*                   → asset.bulk_inventory
+  /assetissuance/*                   → asset.issuance
+  /assetcalibration/*                → asset.calibration
+
+================================================================================
+2. PERMISSION KEYS REMOVED FROM `settings`
+================================================================================
+
+These were dead — never gated any route. Stop sending / displaying them:
+
+  settings.assets                    ← moved to top-level `asset` module (see §1)
+  settings.audit_trail               ← never wired; audit access is via:
+                                       • audit.trail            (cross-module)
+                                       • finance.audit_trail    (finance-scoped)
+  settings.audit_retention           ← never wired; admin retention controls
+                                       are gated by audit.trail (edit) instead
+
+If your FE was sending `settings.audit_trail` or `settings.audit_retention`
+in role payloads, the backend was silently dropping them (Mongoose strict
+mode). They now must NOT be sent — the schema rejects unknown keys.
+
+================================================================================
+3. PERMISSION KEYS PREVIOUSLY DROPPED — DO NOT SEND
+================================================================================
+
+These were in the OLD seed list but never existed in the schema. Mongoose
+strict mode silently discarded them, so any FE checkbox tied to one of these
+was a no-op. If you have UI for them, REMOVE the checkbox:
+
+  hr.holidays                        ← never existed; gated nothing
+  finance.tds                        ← never existed; gated nothing
+  finance.retention_ledger           ← never existed; gated nothing
+                                       (finance.retention IS valid — see §4)
+
+================================================================================
+4. PERMISSION KEYS NOW GRANTED — ADD TO ROLE-EDIT MATRIX
+================================================================================
+
+These exist in the schema but were missing from the auto-grant list. Now
+auto-granted to DEV on every boot. FE should render them in the role matrix
+so other custom roles can also receive them.
+
+  hr.scorecard                       — HR scorecard module
+  project.site_drawing               — Project site drawings
+  site.workorder_done                — Site work-order completion entries
+
+  finance.account_browser            — Finance account browser
+  finance.bulk_import_export         — Finance bulk import/export
+  finance.cash_flow_forecast         — Cash flow forecast report
+  finance.currency                   — Currency master
+  finance.finance_settings           — Finance settings (was BROKEN for DEV
+                                       before the fix — metrics route was 403)
+  finance.fund_flow                  — Fund flow report
+  finance.ratio_analysis             — Ratio analysis report
+  finance.tender_profitability       — Tender profitability report
+  finance.webhooks                   — Finance webhook subscriptions
+
+================================================================================
+5. UNCHANGED — NO ACTION REQUIRED
+================================================================================
+
+These pre-existing top-level modules and their sub-modules are unchanged:
+  dashboard, tender, project, purchase, site, hr, finance, audit,
+  approval, report, settings (minus the 3 keys removed in §2)
+
+These pre-existing per-context asset keys are intentionally unchanged.
+They gate UIs INSIDE other modules and are NOT redundant with the new
+top-level `asset` module:
+  project.assets                     — project's asset assignment view
+  purchase.assets                    — purchase order machinery tracking
+  purchase.machinery_tracking        — purchase machinery dashboard
+  site.site_assets                   — site asset reporting
+
+================================================================================
+6. FULL CURRENT MODULE / SUB-MODULE INVENTORY (auto-derived from schema)
+================================================================================
+
+Use this as the canonical list when rendering the role-edit checkbox matrix:
+
+  dashboard
+    └─ read
+
+  tender
+    ├─ clients          ├─ tenders         ├─ dlp
+    ├─ emd              ├─ security_deposit└─ project_penalty
+
+  project
+    ├─ boq_cost         ├─ detailed_estimate ├─ drawing_boq
+    ├─ site_drawing     ├─ wbs               ├─ schedule
+    ├─ wo_issuance      ├─ client_billing    ├─ work_progress
+    ├─ material_quantity├─ stocks            └─ assets
+
+  purchase
+    ├─ vendor_supplier  ├─ request           ├─ enquiry
+    ├─ order            ├─ goods_receipt     ├─ bill
+    ├─ machinery_tracking ├─ stocks          └─ assets
+
+  site
+    ├─ boq_site         ├─ detailed_estimate ├─ site_drawing
+    ├─ purchase_request ├─ material_received ├─ material_issued
+    ├─ stock_register   ├─ workorder_done    ├─ work_done
+    ├─ daily_labour_report ├─ machinery_entry├─ site_assets
+    ├─ weekly_billing   ├─ reconciliation    └─ planned_vs_achieved
+
+  hr
+    ├─ employee         ├─ attendance        ├─ leave
+    ├─ payroll          ├─ contract_nmr      ├─ nmr
+    ├─ nmr_attendance   ├─ geofence          └─ scorecard
+
+  finance  (60 sub-modules — see RoleModel.schema.tree.permissions.finance
+            for the canonical list, or call GET /role/<id> on a freshly
+            seeded DEV role to dump them all)
+
+  asset                    ← NEW TOP-LEVEL
+    ├─ category_master  ├─ machinery         ├─ machinery_logs
+    ├─ maintenance      ├─ fuel_telemetry    ├─ tagged_asset
+    ├─ bulk_inventory   ├─ issuance          └─ calibration
+
+  audit
+    └─ trail
+
+  approval
+    ├─ requests         ├─ my_pending        ├─ rules            └─ simulator
+
+  report  (15 sub-modules)
+    ├─ project_dashboard├─ work_analysis     ├─ client_billing
+    ├─ financial_report ├─ pnl               ├─ cash_flow
+    ├─ expenses_report  ├─ vendor_report     ├─ reconciliation
+    ├─ actual_vs_billed ├─ cost_to_complete  ├─ planned_vs_actual
+    ├─ labour_productivity ├─ machine_productivity └─ collection_projection
+
+  settings
+    ├─ user             ├─ roles             ├─ master
+    ├─ hsn_sac          └─ approval_config
+
+================================================================================
+7. MIGRATION CHECKLIST FOR FE
+================================================================================
+
+  [ ] Remove `settings.assets`, `settings.audit_trail`, `settings.audit_retention`
+      from role-edit forms and any local permission checks.
+
+  [ ] Remove `hr.holidays`, `finance.tds`, `finance.retention_ledger` from
+      role-edit forms (these never worked).
+
+  [ ] Add the new top-level `asset` module section to the role-edit form,
+      with all 9 sub-modules listed in §1.
+
+  [ ] Add the previously-missing keys from §4 to the role-edit form.
+
+  [ ] If the FE statically embeds the permission tree (e.g. for a "select all"
+      button or progress indicator), refresh from the schema by calling:
+        GET /role/<DEV_ROLE_ID>
+      and using the returned `permissions` object as the source of truth.
+
+  [ ] Re-test menu visibility / route guards for any UI that referenced the
+      removed keys — the FE check should now use the new module (e.g. the
+      "Assets" menu item should check `asset.tagged_asset.read || asset.machinery.read`
+      instead of `settings.assets.read`).
+
+================================================================================
+END OF DOCUMENT
+================================================================================

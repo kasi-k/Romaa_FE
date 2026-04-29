@@ -1,0 +1,1 @@
+const E="asset",e={CATEGORY_MASTER:"category_master",MAINTENANCE:"maintenance",FUEL_TELEMETRY:"fuel_telemetry",TAGGED_ASSET:"tagged_asset",BULK_INVENTORY:"bulk_inventory",ISSUANCE:"issuance",CALIBRATION:"calibration"},t={CREATE:"create",EDIT:"edit",DELETE:"delete"};export{E as A,e as a,t as b};

@@ -1,0 +1,985 @@
+import React, { useEffect, useMemo, useState } from "react";
+import axios from "axios";
+import { API } from "../../../../../../constant";
+import { toast } from "react-toastify";
+import { useParams } from "react-router-dom";
+
+const formatNumber = (num) => {
+  if (num === undefined || num === null || num === "") return "-";
+  const n = Number(num);
+  if (Number.isNaN(n)) return "-";
+  return n.toFixed(2);
+};
+
+const BOQSplit = () => {
+  const { tender_id } = useParams();
+  const [boq, setBoq] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const fetchBoqSplit = async () => {
+    if (!tender_id) return;
+    setLoading(true);
+    try {
+      const res = await axios.get(`${API}/boq/get-items/${tender_id}`);
+      setBoq(res.data.data || null);
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to fetch BOQ items");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBoqSplit();
+  }, [tender_id]);
+
+  const items = useMemo(() => boq?.items || [], [boq]);
+
+  if (loading) {
+    return <div className="p-4 text-center">Loading BOQ Split…</div>;
+  }
+
+  if (!boq || !Array.isArray(items) || items.length === 0) {
+    return (
+      <div className="p-4 text-center text-red-500">
+        No BOQ split data found for Tender {tender_id}
+      </div>
+    );
+  }
+
+  // --- STYLING CONFIGURATION ---
+  const WIDTHS = {
+    sl: 50,
+    item: 180,
+    desc: 200,
+    unit: 50,
+    qty: 60,
+  };
+
+  const getStickyStyle = (colName, isHeader = false) => {
+    let left = 0;
+    if (colName === "item") left = WIDTHS.sl;
+    if (colName === "desc") left = WIDTHS.sl + WIDTHS.item;
+    if (colName === "unit") left = WIDTHS.sl + WIDTHS.item + WIDTHS.desc;
+    if (colName === "qty") left = WIDTHS.sl + WIDTHS.item + WIDTHS.desc + WIDTHS.unit;
+
+    return {
+      position: "sticky",
+      left: `${left}px`,
+      zIndex: isHeader ? 30 : 20, // High z-index to stay on top
+      width: WIDTHS[colName],
+      minWidth: WIDTHS[colName],
+      maxWidth: WIDTHS[colName],
+    };
+  };
+
+  // --- FIX: BORDER STYLES ---
+  // 1. We use 'border-separate' on the table.
+  // 2. We apply 'border-r' and 'border-b' to every cell.
+  // 3. We apply 'border-t' and 'border-l' to the main table wrapper to close the box.
+  
+  const baseCellClass = "border-r border-b border-gray-300 px-2 py-2";
+  
+  // Sticky Cell Class (White background is CRITICAL to hide scrolling content behind it)
+  const stickyClass = `${baseCellClass} bg-white group-hover:bg-gray-50`; 
+  
+  // Header Sticky Class
+  const headerStickyClass = `${baseCellClass} bg-gray-100 text-gray-700 font-bold`;
+
+  // Shadow for the last sticky column to create a "floating" effect
+  const lastStickyShadow = "shadow-[4px_0_5px_-2px_rgba(0,0,0,0.1)] border-r-2 border-r-gray-400";
+
+  return (
+    <div className="space-y-4">
+      {/* Top Cards */}
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+          <div className="border rounded-md px-2 py-1 bg-green-50">
+            <p className="text-[11px] text-gray-500">BOQ Total</p>
+            <p className="font-semibold text-green-700">
+              {formatNumber(boq.boq_total_amount)}
+            </p>
+          </div>
+          <div className="border rounded-md px-2 py-1 bg-blue-50">
+            <p className="text-[11px] text-gray-500">Zero‑Cost Total</p>
+            <p className="font-semibold text-blue-700">
+              {formatNumber(boq.zero_cost_total_amount)}
+            </p>
+          </div>
+          <div className="border rounded-md px-2 py-1 bg-amber-50">
+            <p className="text-[11px] text-gray-500">Variance Amount</p>
+            <p className="font-semibold text-amber-700">
+              {formatNumber(boq.variance_amount)}
+            </p>
+          </div>
+          <div className="border rounded-md px-2 py-1 bg-rose-50">
+            <p className="text-[11px] text-gray-500">Variance %</p>
+            <p className="font-semibold text-rose-700">
+              {formatNumber(boq.variance_percentage)}%
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Table Container - Added border-t and border-l here */}
+      <div className="overflow-x-auto border-t border-l border-gray-300 bg-white shadow-sm max-w-full ">
+        
+        {/* FIX: Changed to border-separate and border-spacing-0 */}
+        <table className="border-separate border-spacing-0 text-xs table-fixed min-w-full">
+          <thead>
+            <tr className="bg-gray-100 text-gray-700 uppercase">
+              {/* --- STICKY HEADERS --- */}
+              <th rowSpan={2} style={getStickyStyle("sl", true)} className={`${headerStickyClass} text-center`}>
+                Sl. No.
+              </th>
+              <th rowSpan={2} style={getStickyStyle("item", true)} className={`${headerStickyClass} text-left`}>
+                Item
+              </th>
+              <th rowSpan={2} style={getStickyStyle("desc", true)} className={`${headerStickyClass} text-left`}>
+                Description
+              </th>
+              <th rowSpan={2} style={getStickyStyle("unit", true)} className={`${headerStickyClass} text-center`}>
+                Unit
+              </th>
+              <th rowSpan={2} style={getStickyStyle("qty", true)} className={`${headerStickyClass} ${lastStickyShadow} text-center`}>
+                Qty
+              </th>
+              {/* --- END STICKY HEADERS --- */}
+
+              <th colSpan={2} className={`${baseCellClass} text-center bg-blue-50 min-w-[160px]`}>BOQ</th>
+              <th colSpan={2} className={`${baseCellClass} text-center bg-green-100 min-w-[160px]`}>Zero‑Cost</th>
+              <th colSpan={2} className={`${baseCellClass} text-center bg-emerald-50 min-w-[160px]`}>Consumable</th>
+              <th colSpan={2} className={`${baseCellClass} text-center bg-emerald-50 min-w-[160px]`}>Bulk</th>
+              <th colSpan={2} className={`${baseCellClass} text-center bg-yellow-50 min-w-[160px]`}>Machinery</th>
+              <th colSpan={2} className={`${baseCellClass} text-center bg-yellow-50 min-w-[160px]`}>Fuel</th>
+              <th colSpan={2} className={`${baseCellClass} text-center bg-purple-50 min-w-[160px]`}>Contractor</th>
+              <th colSpan={2} className={`${baseCellClass} text-center bg-purple-50 min-w-[160px]`}>NMR</th>
+              <th colSpan={2} className={`${baseCellClass} text-center bg-rose-50 min-w-[160px]`}>Variance</th>
+            </tr>
+
+            <tr className="bg-gray-100 text-gray-600">
+              <th className={`${baseCellClass} text-center bg-blue-50`}>Rate</th>
+              <th className={`${baseCellClass} text-center bg-blue-50`}>Amount</th>
+              <th className={`${baseCellClass} text-center bg-green-100`}>Rate</th>
+              <th className={`${baseCellClass} text-center bg-green-100`}>Amount</th>
+              <th className={`${baseCellClass} text-center bg-emerald-50`}>Rate</th>
+              <th className={`${baseCellClass} text-center bg-emerald-50`}>Amount</th>
+              <th className={`${baseCellClass} text-center bg-emerald-50`}>Rate</th>
+              <th className={`${baseCellClass} text-center bg-emerald-50`}>Amount</th>
+              <th className={`${baseCellClass} text-center bg-yellow-50`}>Rate</th>
+              <th className={`${baseCellClass} text-center bg-yellow-50`}>Amount</th>
+              <th className={`${baseCellClass} text-center bg-yellow-50`}>Rate</th>
+              <th className={`${baseCellClass} text-center bg-yellow-50`}>Amount</th>
+              <th className={`${baseCellClass} text-center bg-purple-50`}>Rate</th>
+              <th className={`${baseCellClass} text-center bg-purple-50`}>Amount</th>
+              <th className={`${baseCellClass} text-center bg-purple-50`}>Rate</th>
+              <th className={`${baseCellClass} text-center bg-purple-50`}>Amount</th>
+              <th className={`${baseCellClass} text-center bg-rose-50`}>Amt</th>
+              <th className={`${baseCellClass} text-center bg-rose-50`}>%</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {items.map((it, idx) => (
+              <tr key={it.item_id || idx} className="hover:bg-gray-50 text-gray-700 group">
+                {/* --- STICKY BODY COLUMNS --- */}
+                <td style={getStickyStyle("sl")} className={`${stickyClass} text-center`}>
+                  {idx + 1}
+                </td>
+                <td style={getStickyStyle("item")} className={`${stickyClass} font-medium truncate`} title={it.item_name}>
+                  {it.item_name}
+                </td>
+                <td style={getStickyStyle("desc")} className={`${stickyClass} text-xs truncate`} title={it.description}>
+                  {it.description}
+                </td>
+                <td style={getStickyStyle("unit")} className={`${stickyClass} text-center`}>
+                  {it.unit}
+                </td>
+                <td style={getStickyStyle("qty")} className={`${stickyClass} ${lastStickyShadow} text-right`}>
+                  {formatNumber(it.quantity)}
+                </td>
+                {/* --- END STICKY BODY COLUMNS --- */}
+
+                <td className={`${baseCellClass} text-right bg-blue-50/40`}>{formatNumber(it.n_rate)}</td>
+                <td className={`${baseCellClass} text-right bg-blue-50/40`}>{formatNumber(it.n_amount)}</td>
+                <td className={`${baseCellClass} text-right bg-green-100/40 font-semibold`}>{formatNumber(it.final_rate)}</td>
+                <td className={`${baseCellClass} text-right bg-green-100/40 font-semibold`}>{formatNumber(it.final_amount)}</td>
+                <td className={`${baseCellClass} text-right bg-emerald-50/30`}>{formatNumber(it.consumable_material_rate)}</td>
+                <td className={`${baseCellClass} text-right bg-emerald-50/30`}>{formatNumber(it.consumable_material_amount)}</td>
+                <td className={`${baseCellClass} text-right bg-emerald-50/30`}>{formatNumber(it.bulk_material_rate)}</td>
+                <td className={`${baseCellClass} text-right bg-emerald-50/30`}>{formatNumber(it.bulk_material_amount)}</td>
+                <td className={`${baseCellClass} text-right bg-yellow-50/30`}>{formatNumber(it.machinery_rate)}</td>
+                <td className={`${baseCellClass} text-right bg-yellow-50/30`}>{formatNumber(it.machinery_amount)}</td>
+                <td className={`${baseCellClass} text-right bg-yellow-50/30`}>{formatNumber(it.fuel_rate)}</td>
+                <td className={`${baseCellClass} text-right bg-yellow-50/30`}>{formatNumber(it.fuel_amount)}</td>
+                <td className={`${baseCellClass} text-right bg-purple-50/30`}>{formatNumber(it.contractor_rate)}</td>
+                <td className={`${baseCellClass} text-right bg-purple-50/30`}>{formatNumber(it.contractor_amount)}</td>
+                <td className={`${baseCellClass} text-right bg-purple-50/30`}>{formatNumber(it.nmr_rate)}</td>
+                <td className={`${baseCellClass} text-right bg-purple-50/30`}>{formatNumber(it.nmr_amount)}</td>
+                <td className={`${baseCellClass} text-right bg-rose-50/40 text-red-700`}>{formatNumber(it.variance_amount)}</td>
+                <td className={`${baseCellClass} text-right bg-rose-50/40 text-red-700`}>{formatNumber(it.variance_percentage)}%</td>
+              </tr>
+            ))}
+
+            {/* Footer totals */}
+            <tr className="bg-gray-200 font-semibold z-30">
+              <td 
+                colSpan={5} 
+                className={`sticky left-0 bg-gray-200 border-r border-b border-gray-300 text-right px-2 py-2 ${lastStickyShadow} z-30`}
+              >
+                Totals
+              </td>
+              
+              <td className={`${baseCellClass} bg-blue-50`}></td>
+              <td className={`${baseCellClass} text-right bg-blue-50`}>{formatNumber(boq.boq_total_amount)}</td>
+              <td className={`${baseCellClass} bg-green-100`}></td>
+              <td className={`${baseCellClass} text-right bg-green-100`}>{formatNumber(boq.zero_cost_total_amount)}</td>
+              <td className={`${baseCellClass} bg-emerald-50`}></td>
+              <td className={`${baseCellClass} text-right bg-emerald-50`}>{formatNumber(boq.consumable_material)}</td>
+              <td className={`${baseCellClass} bg-emerald-50`}></td>
+              <td className={`${baseCellClass} text-right bg-emerald-50`}>{formatNumber(boq.bulk_material)}</td>
+              <td className={`${baseCellClass} bg-yellow-50`}></td>
+              <td className={`${baseCellClass} text-right bg-yellow-50`}>{formatNumber(boq.machinery)}</td>
+              <td className={`${baseCellClass} bg-yellow-50`}></td>
+              <td className={`${baseCellClass} text-right bg-yellow-50`}>{formatNumber(boq.fuel)}</td>
+              <td className={`${baseCellClass} bg-purple-50`}></td>
+              <td className={`${baseCellClass} text-right bg-purple-50`}>{formatNumber(boq.contractor)}</td>
+              <td className={`${baseCellClass} bg-purple-50`}></td>
+              <td className={`${baseCellClass} text-right bg-purple-50`}>{formatNumber(boq.nmr)}</td>
+              <td className={`${baseCellClass} bg-rose-50 text-right`}>{formatNumber(boq.variance_amount)}</td>
+              <td className={`${baseCellClass} bg-rose-50 text-right`}>{formatNumber(boq.variance_percentage)}%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+export default BOQSplit;
+
+import React, { useEffect, useState, useMemo } from "react";
+import axios from "axios";
+import { format, isValid, parseISO } from "date-fns";
+import {
+  ChevronRight, ChevronDown,
+  Link as LinkIcon,
+  Pencil // Import Pencil Icon
+} from "lucide-react";
+import { TbFileExport } from "react-icons/tb";
+import { useProject } from "../../../../ProjectContext";
+import { API } from "../../../../../../constant";
+import Button from "../../../../../../components/Button";
+import UploadScheduleModal from "../../UploadScheduleModal";
+// Import the new modal
+import EditScheduleModal from "./EditScheduleModal"; // Adjust path as needed
+
+// ... (Keep your Helper Functions and flattenStructure logic exactly as is) ...
+
+const ProjectSchedule = () => {
+  const { tenderId } = useProject();
+  const [flatRows, setFlatRows] = useState([]);
+  const [expandedIds, setExpandedIds] = useState(new Set());
+  const [loading, setLoading] = useState(false);
+  
+  // --- New State for Edit ---
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedRow, setSelectedRow] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const fetchWBS = async () => {
+    // ... (Keep existing fetch logic) ...
+    if (!tenderId) return;
+    setLoading(true);
+    try {
+      const res = await axios.get(`${API}/schedulelite/get-all-schedule/${tenderId}`);
+      if (res.data?.data?.structure) {
+        const flattened = flattenStructure(res.data.data.structure);
+        setFlatRows(flattened);
+        setExpandedIds(new Set(flattened.map(r => r.uniqueKey)));
+      } else {
+        setFlatRows([]);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchWBS(); }, [tenderId]);
+
+  const toggleRow = (id) => {
+    // ... (Keep existing toggle logic) ...
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const visibleRows = useMemo(() => {
+    // ... (Keep existing visibleRows logic) ...
+    const rowMap = new Map(flatRows.map(r => [r.id, r]));
+    return flatRows.filter(row => {
+      if (!row.parentId) return true;
+      let curr = row;
+      while (curr.parentId) {
+        if (!expandedIds.has(curr.parentId)) return false;
+        curr = rowMap.get(curr.parentId);
+        if (!curr) return true;
+      }
+      return true;
+    });
+  }, [flatRows, expandedIds]);
+
+  // --- Handlers for Edit ---
+  const handleEditClick = (row) => {
+    setSelectedRow(row);
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditSubmit = async (payload) => {
+    if (!tenderId) return;
+    setIsSubmitting(true);
+    try {
+      // Assuming your API endpoint looks something like this
+      await axios.post(`${API}/schedulelite/update-row-schedule/${tenderId}`, payload);
+      
+      // Close and Refresh
+      setIsEditModalOpen(false);
+      setSelectedRow(null);
+      fetchWBS(); // Refresh data to show changes
+    } catch (error) {
+      console.error("Error updating schedule:", error);
+      alert("Failed to update schedule. Check console.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-full font-roboto-flex text-sm">
+      {/* Top Bar */}
+      <div className="flex flex-row gap-4 justify-end mb-3">
+        <Button
+          button_icon={<TbFileExport size={20} />}
+          button_name="Upload Schedule"
+          bgColor="dark:bg-layout-dark bg-white"
+          textColor="dark:text-white text-darkest-blue"
+          onClick={() => setIsUploadModalOpen(true)}
+        />
+      </div>
+
+      <div className="flex-1 overflow-auto border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm custom-scrollbar relative">
+        <table className="border-separate border-spacing-0 w-full min-w-[1400px]">
+          
+          <thead className="bg-gray-100 dark:bg-gray-800 shadow-sm sticky top-0 z-40">
+            <tr className="uppercase text-[11px] tracking-wider font-bold text-gray-600 dark:text-gray-300">
+              
+              {/* ... (Existing Sticky Headers) ... */}
+              <th rowSpan={2} className="border-r border-b border-gray-300 dark:border-gray-700 p-2 text-center bg-gray-100 dark:bg-gray-800 sticky left-0 top-0 z-60 min-w-[50px]">No.</th>
+              <th rowSpan={2} className="border-r border-b border-gray-300 dark:border-gray-700 p-2 text-left bg-gray-100 dark:bg-gray-800 sticky left-[10px] top-0 z-50 min-w-[300px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Activity Description</th>
+              <th rowSpan={2} className="border-r border-b border-gray-300 dark:border-gray-700 p-2 text-center bg-gray-100 dark:bg-gray-800 min-w-[60px] sticky left-[350px] top-0 z-50">Unit</th>
+              <th rowSpan={2} className="border-r border-b border-gray-300 dark:border-gray-700 p-2 text-center bg-gray-100 dark:bg-gray-800 min-w-[60px] sticky left-[410px] top-0 z-50 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Qty</th>
+
+              {/* ... (Existing Group Headers) ... */}
+              <th colSpan={2} className="border-b border-r border-gray-300 dark:border-gray-700 p-1 text-center bg-blue-50 dark:bg-blue-900/20 text-blue-700">Quantities</th>
+              <th colSpan={3} className="border-b border-r border-gray-300 dark:border-gray-700 p-1 text-center bg-green-50 dark:bg-green-900/20 text-green-700">Original</th>
+              <th colSpan={3} className="border-b border-r border-gray-300 dark:border-gray-700 p-1 text-center bg-orange-50 dark:bg-orange-900/20 text-orange-700">Revised</th>
+              <th colSpan={3} className="border-b border-gray-300 dark:border-gray-700 p-1 text-center bg-gray-200 dark:bg-gray-700">Status</th>
+              
+              {/* --- NEW ACTION HEADER --- */}
+              <th rowSpan={2} className="border-b border-l border-gray-300 dark:border-gray-700 p-2 text-center bg-gray-100 dark:bg-gray-800 sticky right-0 top-0 z-50 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                Action
+              </th>
+            </tr>
+
+            <tr className="text-[10px] font-semibold text-gray-500 dark:text-gray-400">
+               {/* ... (Keep existing Sub Headers) ... */}
+               <th className="border-b border-r border-gray-300 px-2 py-1 text-right bg-blue-50/50">Exec</th>
+               <th className="border-b border-r border-gray-300 px-2 py-1 text-right bg-blue-50/50">Bal</th>
+               <th className="border-b border-r border-gray-300 px-2 py-1 text-center bg-green-50/50">Start</th>
+               <th className="border-b border-r border-gray-300 px-2 py-1 text-center bg-green-50/50">End</th>
+               <th className="border-b border-r border-gray-300 px-2 py-1 text-center bg-green-50/50">Days</th>
+               <th className="border-b border-r border-gray-300 px-2 py-1 text-center bg-orange-50/50">Start</th>
+               <th className="border-b border-r border-gray-300 px-2 py-1 text-center bg-orange-50/50">End</th>
+               <th className="border-b border-r border-gray-300 px-2 py-1 text-center bg-orange-50/50">Days</th>
+               <th className="border-b border-r border-gray-300 px-2 py-1 text-center bg-gray-50">Pred</th>
+               <th className="border-b border-r border-gray-300 px-2 py-1 text-center bg-gray-50">Lag</th>
+               <th className="border-b border-gray-300 px-2 py-1 text-center bg-gray-50">Status</th>
+            </tr>
+          </thead>
+
+          <tbody className="text-gray-700 dark:text-gray-300">
+            {loading ? (
+              <tr><td colSpan={16} className="p-10 text-center text-gray-400">Loading Data...</td></tr>
+            ) : visibleRows.length > 0 ? (
+              visibleRows.map((row) => {
+                const isLeaf = row.type === 'leaf';
+                const hasChildren = row.type !== 'leaf';
+                // ... (Keep existing style logic) ...
+                let bgRow = "bg-white dark:bg-gray-900";
+                if (row.type === 'group') bgRow = "bg-gray-100 dark:bg-gray-800";
+                else if (row.type === 'item') bgRow = "bg-gray-50 dark:bg-gray-900/60";
+
+                let stickyBg = "bg-white dark:bg-gray-900";
+                if (row.type === 'group') stickyBg = "bg-gray-100 dark:bg-gray-800";
+                else if (row.type === 'item') stickyBg = "bg-gray-50 dark:bg-gray-900";
+
+                let textDesc = "text-slate-900 dark:text-gray-300";
+                if (row.type === 'group') textDesc = "font-bold text-gray-900 dark:text-white";
+                else if (row.type === 'item') textDesc = "font-semibold text-red-800 dark:text-gray-200";
+                else if (row.type === 'leaf') textDesc = "font-semibold text-blue-600 dark:text-gray-200";
+
+                const indentPx = row.level * 20 + 4;
+
+                // ** Condition for Edit Button **
+                // Show only if start_date and end_date exist (implies schedulable activity)
+                const showAction = row.start && row.end;
+
+                return (
+                  <tr key={row.uniqueKey} className={`${bgRow} hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors group`}>
+                    
+                    {/* ... (Keep existing TD cells 1 through 4) ... */}
+                    <td className={`border-r border-b border-gray-100 dark:border-gray-800 px-2 py-2 text-center text-xs text-gray-400 font-mono sticky left-0 z-20 ${stickyBg}`}>{row.row_index}</td>
+                    <td className={`border-r border-b border-gray-100 dark:border-gray-800 px-2 py-2 text-left sticky left-[10px] z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] ${stickyBg}`}>
+                      <div className="flex items-center" style={{ paddingLeft: `${indentPx}px` }}>
+                        {hasChildren ? (
+                          <button onClick={() => toggleRow(row.uniqueKey)} className="mr-1 text-gray-400 hover:text-blue-600">
+                            {expandedIds.has(row.uniqueKey) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                          </button>
+                        ) : <span className="w-[14px] mr-1" />}
+                        <div className="flex flex-col truncate">
+                          <span className={`truncate ${textDesc} text-xs`} title={row.name}>{row.name}</span>
+                          {isLeaf && row.wbs_code && <span className="text-[10px] text-gray-400 font-mono leading-none pt-0.5">{row.wbs_code}</span>}
+                        </div>
+                      </div>
+                    </td>
+                    <td className={`border-r border-b border-gray-100 dark:border-gray-800 px-2 py-2 text-center text-xs text-gray-500 sticky left-[350px] z-30 ${stickyBg}`}>{row.unit}</td>
+                    <td className={`border-r border-b border-gray-100 dark:border-gray-800 px-2 py-2 text-center text-xs text-gray-500 sticky left-[410px] z-30 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] ${stickyBg}`}>{formatNumber(row.quantity)}</td>
+
+                    {/* ... (Keep existing Data cells) ... */}
+                    <td className="border-r border-b border-gray-100 px-2 py-2 text-right text-xs font-mono text-blue-700 bg-blue-50/20">{formatNumber(row.executed_quantity)}</td>
+                    <td className="border-r border-b border-gray-100 px-2 py-2 text-right text-xs font-mono font-semibold text-blue-800 bg-blue-50/20">{formatNumber(row.balance_quantity)}</td>
+                    <td className="border-r border-b border-gray-100 px-2 py-2 text-center text-xs text-gray-500 bg-green-50/10 whitespace-nowrap">{formatDate(row.start)}</td>
+                    <td className="border-r border-b border-gray-100 px-2 py-2 text-center text-xs text-gray-500 bg-green-50/10 whitespace-nowrap">{formatDate(row.end)}</td>
+                    <td className="border-r border-b border-gray-100 px-2 py-2 text-center text-xs text-gray-500 bg-green-50/10">{row.duration || ""}</td>
+                    <td className="border-r border-b border-gray-100 px-2 py-2 text-center text-xs text-orange-600 bg-orange-50/10 whitespace-nowrap font-medium">{formatDate(row.rev_start)}</td>
+                    <td className="border-r border-b border-gray-100 px-2 py-2 text-center text-xs text-orange-600 bg-orange-50/10 whitespace-nowrap font-medium">{formatDate(row.rev_end)}</td>
+                    <td className="border-r border-b border-gray-100 px-2 py-2 text-center text-xs text-orange-600 bg-orange-50/10 font-bold">{row.rev_duration || ""}</td>
+                    <td className="border-r border-b border-gray-100 px-2 py-2 text-center text-[10px]">
+                      {/* ... (Keep predecessor logic) ... */}
+                      {(row.predecessor || row.predecessor_actual) ? (
+                        <div className="flex items-center justify-center gap-1">
+                          {row.predecessor !== row.predecessor_actual ? (
+                            <>
+                              {row.predecessor && <span className="text-orange-700 bg-orange-100 border border-orange-300 px-1 py-0.5 rounded font-bold whitespace-nowrap">{row.predecessor}</span>}
+                              {row.predecessor_actual && <span className="text-gray-500 bg-gray-50 border border-gray-200 px-1 py-0.5 rounded whitespace-nowrap">{row.predecessor_actual}</span>}
+                            </>
+                          ) : (
+                            <span className="text-gray-600 bg-gray-100 border border-gray-200 px-1 py-0.5 rounded whitespace-nowrap"><LinkIcon size={8} className="inline mr-1"/>{row.predecessor_actual || row.predecessor}</span>
+                          )}
+                        </div>
+                      ) : ""}
+                    </td>
+                    <td className={`border-r border-b border-gray-100 px-2 py-2 text-center text-xs font-bold ${row.lag > 0 ? 'text-red-500' : 'text-green-500'}`}>{row.lag && row.lag !== 0 ? `${row.lag > 0 ? '+' : ''}${row.lag}` : "0"}</td>
+                    <td className="border-b border-gray-100 px-2 py-2 text-center"><span className={`px-1.5 py-0.5 rounded text-[10px] uppercase font-bold border ${getStatusColor(row.status)}`}>{row.status}</span></td>
+
+                    {/* --- NEW ACTION CELL (Sticky Right) --- */}
+                    <td className={`border-b border-l border-gray-100 dark:border-gray-800 px-2 py-2 text-center sticky right-0 z-30 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)] ${stickyBg}`}>
+                      {showAction && (
+                        <button
+                          onClick={() => handleEditClick(row)}
+                          className="p-1.5 rounded-full hover:bg-blue-100 text-blue-600 dark:hover:bg-blue-900 dark:text-blue-400 transition-all"
+                          title="Edit Duration or Predecessor"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                      )}
+                    </td>
+
+                  </tr>
+                );
+              })
+            ) : (
+              <tr><td colSpan={16} className="py-12 text-center text-gray-400">No Data Found.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Modals */}
+      {isUploadModalOpen && (
+        <UploadScheduleModal
+          onclose={() => setIsUploadModalOpen(false)}
+          onSuccess={() => { fetchWBS(); setIsUploadModalOpen(false); }}
+        />
+      )}
+
+      {isEditModalOpen && selectedRow && (
+        <EditScheduleModal
+          isOpen={isEditModalOpen}
+          onClose={() => { setIsEditModalOpen(false); setSelectedRow(null); }}
+          rowData={selectedRow}
+          onSubmit={handleEditSubmit}
+          isSubmitting={isSubmitting}
+        />
+      )}
+    </div>
+  );
+};
+
+export default ProjectSchedule;
+
+
+
+
+  const navigate = useNavigate();
+    const location = useLocation();
+  
+  // Safe State Access
+  const passedItem = location.state?.item || {};
+  const requestIdParam = passedItem.requestId;
+  const projectIdParam = passedItem.projectName; // Assuming 'projectName' holds the ID based on context
+
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch Data
+  useEffect(() => {
+    const fetchRequest = async () => {
+      if (!requestIdParam || !projectIdParam) return;
+      
+      try {
+        const res = await axios.get(
+          `${API}/purchaseorderrequest/api/getQuotationRequested/${projectIdParam}/${requestIdParam}`
+        );
+        setData(res.data?.data);
+      } catch (err) {
+        console.error("Error fetching request:", err);
+        toast.error("Failed to load request details");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRequest();
+  }, [requestIdParam, projectIdParam]);
+
+
+
+
+  Some Complex Design but i will explain it to you
+
+  in AddMaterial Component
+
+  i want to add materials in multiple rows as per Po quantity, 
+
+  on form if i choose requestId auto the materials found 
+
+  http://localhost:5000/purchaseorderrequest/api/getbyIdMaterialReceived/TND021 
+
+{
+    "data": [
+        {
+            "_id": "695a3f27f1eb64a1960e0c3c",
+            "requestId": "POR011",
+            "projectId": "TND021",
+            "title": "Covering",
+            "description": "Details of covering",
+            "materialsRequired": [
+                {
+                    "materialName": "TMT Steel",
+                    "quantity": 1,
+                    "unit": "MT",
+                    "_id": "695a3f27f1eb64a1960e0c3d"
+                },
+                {
+                    "materialName": "Cement",
+                    "quantity": 123,
+                    "unit": "Bags",
+                    "_id": "695a3f27f1eb64a1960e0c3e"
+                },
+                {
+                    "materialName": "Msand",
+                    "quantity": 2,
+                    "unit": "Unit",
+                    "_id": "695a3f27f1eb64a1960e0c3f"
+                }
+            ]
+        },
+        {
+            "_id": "695a768b7530a541ca19e204",
+            "requestId": "POR015",
+            "projectId": "TND021",
+            "title": "cement",
+            "description": "Just Required",
+            "materialsRequired": [
+                {
+                    "materialName": "River Sand",
+                    "quantity": 200,
+                    "unit": "Unit",
+                    "_id": "695a768b7530a541ca19e205"
+                }
+            ]
+        }
+    ]
+}
+
+        Schema 
+
+        import mongoose from "mongoose";
+
+// --- 1. RECEIVED HISTORY (Inward Ledger) ---
+// Tracks materials coming INTO the site (from Vendors/Purchase Requests)
+const InwardTransactionSchema = new mongoose.Schema({
+  date: { type: Date, default: Date.now },
+  quantity: { type: Number, required: true, default: 0 },
+  
+  // Traceability
+  purchase_request_ref: { type: String, default: "" }, // Links to PurchaseRequestModel.requestId
+  supplier_name: { type: String, default: "" },
+  invoice_challan_no: { type: String, default: "" }, // For physical proof
+  
+  received_by: { type: String, default: "" },
+  remarks: { type: String, default: "" }
+}, { _id: true }); // Enable ID for editing specific logs
+
+// --- 2. ISSUED HISTORY (Outward Ledger) ---
+// Tracks materials going OUT to the labor/work (Consumption)
+const OutwardTransactionSchema = new mongoose.Schema({
+  date: { type: Date, default: Date.now },
+  quantity: { type: Number, required: true, default: 0 },
+  
+  // utilization details
+  issued_to: { type: String, default: "" }, // Contractor or Foreman name
+  site_location: { type: String, default: "" }, // e.g., "Block A, 1st Floor"
+  work_description: { type: String, default: "" }, // e.g., "Plastering work"
+  
+  issued_by: { type: String, default: "" },
+  priority_level: { type: String, enum: ["Normal", "Urgent"], default: "Normal" }
+}, { _id: true });
+
+// --- 3. MAIN ITEM SCHEMA ---
+const MaterialItemSchema = new mongoose.Schema(
+  {
+    // ==========================================
+    // SECTION A: REAL QUANTITIES (Budget/Estimates)
+    // These fields are preserved EXACTLY as requested
+    // ==========================================
+    item_description: { type: String, default: "" },
+    category: { type: String, default: "" },
+    unit: { type: String, default: "" },
+    
+    // The breakdown of estimated quantities (e.g., per floor)
+    quantity: [{ type: Number, default: 0 }], 
+    
+    // The Total Budgeted Quantity (Sum of 'quantity' array)
+    total_item_quantity: { type: Number, default: 0 }, 
+    
+    unit_rate: { type: Number, default: 0 },
+    
+    // Budgeted Amount (total_item_quantity * unit_rate)
+    total_amount: { type: Number, default: 0 },
+
+    // ==========================================
+    // SECTION B: INVENTORY TRACKING (Dynamic)
+    // ==========================================
+    
+    // 1. Opening Stock (Carry over from previous project or initial existing stock)
+    opening_stock: { type: Number, default: 0 },
+
+    // 2. Transaction History Arrays
+    inward_history: [InwardTransactionSchema],
+    outward_history: [OutwardTransactionSchema],
+
+    // 3. Calculated Aggregates (Auto-calculated via Middleware)
+    total_received_qty: { type: Number, default: 0 }, // Sum of inward_history
+    total_issued_qty: { type: Number, default: 0 },   // Sum of outward_history
+    
+    // 4. The Golden Number: Actual Stock currently physically at site
+    // Formula: Opening Stock + Total Received - Total Issued
+    current_stock_on_hand: { type: Number, default: 0 },
+
+    // 5. Procurement Status
+    // Formula: Total Budgeted (total_item_quantity) - (Opening + Total Received)
+    pending_procurement_qty: { type: Number, default: 0 },
+  },
+  { _id: true } // We need IDs here to update specific items
+);
+
+const materialSchema = new mongoose.Schema(
+  {
+    tender_id: { type: String, default: "" },
+    items: [MaterialItemSchema],
+    created_by_user: { type: String, default: "ADMIN" },
+  },
+  { timestamps: true }
+);
+
+// --- MIDDLEWARE: AUTOMATIC CALCULATIONS ---
+// This ensures that whenever you save, the totals are mathematically correct.
+materialSchema.pre("save", function (next) {
+  if (this.items && this.items.length > 0) {
+    this.items.forEach((item) => {
+      
+      // 1. Ensure Total Item Quantity matches the quantity array (Budget)
+      if (item.quantity && item.quantity.length > 0) {
+        item.total_item_quantity = item.quantity.reduce((a, b) => a + b, 0);
+      }
+      
+      // 2. Calculate Total Amount (Budget)
+      item.total_amount = item.total_item_quantity * item.unit_rate;
+
+      // 3. Sum up Inwards (Received)
+      const receivedSum = item.inward_history.reduce((sum, record) => sum + record.quantity, 0);
+      item.total_received_qty = receivedSum;
+
+      // 4. Sum up Outwards (Issued)
+      const issuedSum = item.outward_history.reduce((sum, record) => sum + record.quantity, 0);
+      item.total_issued_qty = issuedSum;
+
+      // 5. Calculate Current Physical Stock
+      item.current_stock_on_hand = (item.opening_stock || 0) + receivedSum - issuedSum;
+
+      // 6. Calculate Pending Procurement (How much more we need to buy to meet budget)
+      // If we have bought more than budget, this stays 0 (or negative to show over-procurement)
+      item.pending_procurement_qty = item.total_item_quantity - ((item.opening_stock || 0) + receivedSum);
+    });
+  }
+  next();
+});
+
+const MaterialModel = mongoose.model("materials", materialSchema);
+
+export default MaterialModel;
+
+In form i want to PO quantity  and recieved quantity , and remaining quantity ,and store history of po and received quantity
+
+if the same requestId is choose the PO quantity should be the minus of received quantity and they are allowed to add form PO quantity that is caluclated from history
+
+Service api of MaterialItemSchema
+
+  static async addMaterialReceived(payload) {
+    const {
+      tender_id,
+      received_items, // Array: [{ item_id, received_quantity, supplier_name, invoice_no }]
+      purchase_request_id,
+      received_by
+    } = payload;
+
+    // 1. Fetch the Material Document
+    const materialDoc = await MaterialModel.findOne({ tender_id });
+    if (!materialDoc) throw new Error(`Tender ${tender_id} not found`);
+
+    // 2. Validate Purchase Request (Optional but recommended)
+    let prRef = "";
+    if (purchase_request_id) {
+      const prDoc = await PurchaseRequestModel.findOne({ requestId: purchase_request_id });
+      if (!prDoc) throw new Error(`Purchase Request ${purchase_request_id} not found`);
+      prRef = prDoc.requestId;
+    }
+
+    // 3. Process Each Received Item
+    const processedItems = [];
+
+    for (const entry of received_items) {
+      // Find item by ID (preferred) or Description (fallback)
+      const itemSubDoc = materialDoc.items.find(
+        (i) => i._id.toString() === entry.item_id || i.item_description === entry.item_description
+      );
+
+      if (!itemSubDoc) {
+        throw new Error(`Item '${entry.item_description || entry.item_id}' not found in Material List`);
+      }
+
+      // Create Inward Record
+      const inwardRecord = {
+        date: new Date(),
+        quantity: Number(entry.received_quantity),
+        purchase_request_ref: prRef,
+        supplier_name: entry.supplier_name || "",
+        invoice_challan_no: entry.invoice_no || "",
+        received_by: received_by || "Admin",
+        remarks: entry.remarks || "Received via GRN"
+      };
+
+      // Push to History
+      itemSubDoc.inward_history.push(inwardRecord);
+      processedItems.push(itemSubDoc.item_description);
+    }
+
+    // 4. Save (Middleware automatically updates total_received_qty & current_stock_on_hand)
+    await materialDoc.save();
+
+    return {
+      success: true,
+      message: `Stock updated for: ${processedItems.join(", ")}`,
+      tender_id
+    };
+  }
+
+  design the API for addMaterialReceived if changes needed and also design the component for addMaterialReceived
+
+
+write Api for createWorkDone request to handle multiple entries of work done
+write an Api to get the work done details based on work done id and date
+write an api get the work done basic details without history
+and further more necessary apis
+
+
+my requirements in site engineer 
+will do an multiple entry of work done.if it has 5 entires it to be stored inarray and i want an common workdone_id for.
+
+ondaily entry new workdone _id will be genreated as common
+i want to store it under particular tenderId,
+
+// Important
+
+Here is the robust, production-ready `verifyJWT` middleware.
+
+I have also included a bonus `verifyPermission` middleware. You will need **both** to implement the security architecture we discussed (Login Authentication + RBAC Authorization).
+
+### 1. The Middleware Code (`middleware/auth.middleware.js`)
+
+```javascript
+import jwt from "jsonwebtoken";
+import { User } from "../models/employee.model.js"; // Adjust path to your User/Employee model
+
+// --- 1. Authentication Middleware (Who are you?) ---
+export const verifyJWT = async (req, res, next) => {
+  try {
+    // Get token from Cookie OR Header (Bearer token)
+    const token =
+      req.cookies?.accessToken ||
+      req.header("Authorization")?.replace("Bearer ", "");
+
+    if (!token) {
+      return res.status(401).json({ status: false, message: "Unauthorized request" });
+    }
+
+    // Verify Token
+    const decodedToken = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+
+    // Find User & Populate Role (Crucial for RBAC)
+    const user = await User.findById(decodedToken._id)
+      .select("-password -refreshToken") // Exclude sensitive fields
+      .populate("role"); // We need the role permissions attached to req.user
+
+    if (!user) {
+      return res.status(401).json({ status: false, message: "Invalid Access Token" });
+    }
+
+    // Attach user to request object
+    req.user = user;
+    next();
+    
+  } catch (error) {
+    return res.status(401).json({ status: false, message: error.message || "Invalid Access Token" });
+  }
+};
+
+// --- 2. Authorization Middleware (Are you allowed to do this?) ---
+// Usage: verifyPermission('tender', 'tenders', 'create')
+export const verifyPermission = (module, subModule, action = "read") => {
+  return (req, res, next) => {
+    try {
+      if (!req.user || !req.user.role) {
+        return res.status(403).json({ status: false, message: "Access Denied: No Role Assigned" });
+      }
+
+      const permissions = req.user.role.permissions;
+
+      // 1. Check if Module exists
+      if (!permissions[module]) {
+        return res.status(403).json({ status: false, message: "Access Denied: Module Restricted" });
+      }
+
+      // 2. Check Permission Logic
+      let hasAccess = false;
+
+      if (!subModule) {
+        // Simple Module (e.g. Dashboard)
+        hasAccess = permissions[module][action] === true;
+      } else {
+        // Nested Module (e.g. Tender -> Clients)
+        // Check if submodule exists first
+        if (permissions[module][subModule]) {
+          hasAccess = permissions[module][subModule][action] === true;
+        }
+      }
+
+      if (!hasAccess) {
+        return res.status(403).json({ 
+          status: false, 
+          message: `Access Denied: You do not have '${action}' permission for ${module}/${subModule || ""}` 
+        });
+      }
+
+      next();
+    } catch (error) {
+      return res.status(500).json({ status: false, message: "Authorization Error" });
+    }
+  };
+};
+
+```
+
+---
+
+### 2. How to Protect Your Routes
+
+Now, update your routes file to inject these guards.
+
+**Example: `employee.routes.js**`
+
+```javascript
+import { Router } from "express";
+import { verifyJWT, verifyPermission } from "../middleware/auth.middleware.js";
+import { 
+  createEmployee, 
+  getAllEmployees, 
+  deleteEmployee 
+} from "./employee.controller.js";
+
+const employeeRoute = Router();
+
+// 1. Public Routes (No Protection)
+employeeRoute.post("/login", login); 
+
+// 2. Protected Routes (Need Valid Token)
+// Apply verifyJWT to all routes below this line
+employeeRoute.use(verifyJWT); 
+
+// 3. RBAC Protected Routes (Need Specific Role Permissions)
+
+// Only HR with 'Read' access can list employees
+employeeRoute.get("/list", 
+  verifyPermission("hr", "employee", "read"), 
+  getAllEmployees
+);
+
+// Only HR with 'Create' access can add employees
+employeeRoute.post("/add", 
+  verifyPermission("hr", "employee", "create"), 
+  createEmployee
+);
+
+// Only HR with 'Delete' access can remove employees
+employeeRoute.delete("/:employeeId", 
+  verifyPermission("hr", "employee", "delete"), 
+  deleteEmployee
+);
+
+export default employeeRoute;
+
+```
+
+### 3. Checklist for Implementation
+
+1. **Environment Variables:** Ensure `ACCESS_TOKEN_SECRET` is set in your `.env` file.
+2. **Cookie Parser:** Ensure you have `app.use(cookieParser())` in your main `index.js` or `app.js` so `req.cookies` works.
+3. **Frontend:** Your Frontend must send `withCredentials: true` in Axios requests or include the Bearer token in the header.
